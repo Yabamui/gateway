@@ -1,0 +1,95 @@
+server:
+  port: 8001
+logging:
+  level:
+    reactor:
+      netty: INFO
+    org:
+      springframework:
+        cloud:
+          gateway: TRACE
+spring:
+  redis:
+    host: localhost
+    port: 6379
+  cloud:
+    gateway:
+#      filter:
+#        request-rate-limiter:
+#          deny-empty-key: true
+#      loadbalancer:
+#        use404: true
+      globalcors:
+        cors-configurations:
+          '[/**]':
+            allowedOrigins: "http://localhost:3000"
+            allowdMethods:
+              - GET
+#      # httpClient or okHttp 사용 가능
+#      httpclient:
+#        connect-timeout: 30000
+#        response-timeout: 3s
+      routes:
+        - id: fast-server
+          uri: http://localhost:3000
+          predicates:
+            # 연결가능 path ,로 구분
+            - Path=/success/**
+#            - Path=/users/**
+#            - Path=/users/{segment}
+#            # cookie 검증
+#            - name: Cookie
+#              args:
+#                name: myCcookieKey
+#                regexp: myCookieValue
+            # 허용 method 검증
+            - Method=GET,POST
+#            # query route
+#            - Query=id
+            - Weight=group1, 8
+          filters:
+            # 추가 요청 매개 변수 설정
+#            - AddRequestParameter=red, blue
+            # 추가 요청 헤더 설정
+#            - AddRequestHeader=red, blue
+            # 추가 응답 헤더 설정
+#            - AddResponseHeader=Red, Blue
+            # prefix 설정
+#            - PrefixPath=/users
+            # circuit-breaker 설정
+            - name: CircuitBreaker
+              args:
+                name: fast-server-circuit-breaker
+#                fallbackUri: http://localhost:8001/fallback/1
+                fallbackUri: forward:/fallback/1
+            - name: RequestRateLimiter
+              args:
+                # resolver 가 없을 경우 허용 불가 여부
+                denyEmptyKey: true
+                redis-rate-limiter:
+                  replenishRate: 1
+                  burstCapacity: 50
+                  requestedTokens: 1
+#            # route-path 설정
+#            - RewritePath=/users/(?<segment>/?.*), /users
+        - id: fast-server-fallback-1
+          uri: http://localhost:8001
+          predicates:
+            - Path=/fallback/1
+          filters:
+            - name: FallbackHeaders
+              args:
+                executionExceptionTypeHeaderName: Test-Header
+        - id: slow-server
+          uri: http://localhost:3002
+          predicates:
+            - Path=/users/**
+            - Weight=group2, 2
+          filters:
+            - name: RequestRateLimiter
+              args:
+                # resolver 가 없을 경우 허용 불가 여부
+                denyEmptyKey : false
+                redis-rate-limiter:
+                  replenishRate: 2
+                  burstCapacity: 1
